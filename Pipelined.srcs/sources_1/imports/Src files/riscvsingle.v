@@ -13,12 +13,13 @@ module riscvsingle(
 
   // ---- Controller outputs (ID stage, pipelined into datapath) ----
   wire        RegWriteD, ALUSrcD, MemWriteD, JumpD, BranchD;
-  wire [1:0]  ResultSrcD, ImmSrcD;
+  wire [1:0]  ResultSrcD;
+  wire [2:0]  ImmSrcD;
   wire [2:0]  ALUControlD;
 
   // ---- EX stage signals (to hazard unit) ----
   wire [4:0]  Rs1E, Rs2E, RdE;
-  wire        PCSrcE, ResultSrcE0;
+  wire        PCSrcE, IsLoadE;
 
   // ---- MEM stage signals ----
   wire        RegWriteM, MemWriteM;
@@ -68,7 +69,7 @@ module riscvsingle(
     // EX
     .Rs1E(Rs1E),   .Rs2E(Rs2E), .RdE(RdE),
     .PCSrcE(PCSrcE),
-    .ResultSrcE0(ResultSrcE0),
+    .IsLoadE(IsLoadE),
     // MEM
     .RegWriteM(RegWriteM), .MemWriteM(MemWriteM),
     .RdM(RdM),
@@ -87,7 +88,7 @@ module riscvsingle(
     .Rs1E(Rs1E),       .Rs2E(Rs2E),     .RdE(RdE),
     .RdM(RdM),         .RdW(RdW),
     .RegWriteM(RegWriteM), .RegWriteW(RegWriteW),
-    .ResultSrcE0(ResultSrcE0),
+    .IsLoadE(IsLoadE),
     .PCSrcE(PCSrcE),
     .ForwardAE(ForwardAE), .ForwardBE(ForwardBE),
     .StallF(StallF),   .StallD(StallD),

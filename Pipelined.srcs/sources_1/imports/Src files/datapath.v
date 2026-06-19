@@ -11,13 +11,14 @@ module datapath(
 
   // ---- ID stage: control signals from controller ----
   input         RegWriteD, ALUSrcD, MemWriteD, JumpD, BranchD,
-  input  [1:0]  ResultSrcD, ImmSrcD,
+  input  [1:0]  ResultSrcD,
+  input  [2:0]  ImmSrcD,
   input  [2:0]  ALUControlD,
 
   // ---- EX stage: to hazard unit ----
   output [4:0]  Rs1E, Rs2E, RdE,
   output        PCSrcE,
-  output        ResultSrcE0,   // 1 for loads (lw hazard detection)
+  output        IsLoadE,   // 1 only for lw (ResultSrc==01)
 
   // ---- MEM stage: to hazard unit and external memory ----
   output        RegWriteM, MemWriteM,
@@ -127,10 +128,10 @@ module datapath(
   wire [31:0] PCE        = PCE_r;
   wire [31:0] ImmExtE    = ImmExtE_r;
   wire [31:0] PCPlus4E   = PCPlus4E_r;
-  assign Rs1E       = Rs1E_r;
-  assign Rs2E       = Rs2E_r;
-  assign RdE        = RdE_r;
-  assign ResultSrcE0= ResultSrcE_r[0];
+  assign Rs1E    = Rs1E_r;
+  assign Rs2E    = Rs2E_r;
+  assign RdE     = RdE_r;
+  assign IsLoadE = (ResultSrcE_r == 2'b01);
 
   // ================================================================
   // EX Stage
@@ -138,9 +139,12 @@ module datapath(
   wire [31:0] SrcAE, SrcBE, WriteDataE, ALUResultE;
   wire        ZeroE;
 
+  // ResultM: for LUI (ResultSrc=11) forward the immediate, not the ALU output
+  wire [31:0] ResultM = (ResultSrcM_r == 2'b11) ? ImmExtM_r : ALUResultM_r;
+
   // Forwarding muxes
-  mux3 #(WIDTH) fwdamux(.d0(RD1E), .d1(ResultW), .d2(ALUResultM), .s(ForwardAE), .y(SrcAE));
-  mux3 #(WIDTH) fwdbmux(.d0(RD2E), .d1(ResultW), .d2(ALUResultM), .s(ForwardBE), .y(WriteDataE));
+  mux3 #(WIDTH) fwdamux(.d0(RD1E), .d1(ResultW), .d2(ResultM), .s(ForwardAE), .y(SrcAE));
+  mux3 #(WIDTH) fwdbmux(.d0(RD2E), .d1(ResultW), .d2(ResultM), .s(ForwardBE), .y(WriteDataE));
   mux2 #(WIDTH) srcbmux(.d0(WriteDataE), .d1(ImmExtE), .s(ALUSrcE), .y(SrcBE));
 
   alu alu_unit(
@@ -159,19 +163,20 @@ module datapath(
   // ----------------------------------------------------------------
   reg        RegWriteM_r, MemWriteM_r;
   reg [1:0]  ResultSrcM_r;
-  reg [31:0] ALUResultM_r, WriteDataM_r, PCPlus4M_r;
+  reg [31:0] ALUResultM_r, WriteDataM_r, PCPlus4M_r, ImmExtM_r;
   reg [4:0]  RdM_r;
 
   always @(posedge clk or posedge reset) begin
     if (reset) begin
       RegWriteM_r  <= 0; MemWriteM_r  <= 0; ResultSrcM_r <= 0;
       ALUResultM_r <= 0; WriteDataM_r <= 0;
-      PCPlus4M_r   <= 0; RdM_r        <= 0;
+      PCPlus4M_r   <= 0; RdM_r        <= 0; ImmExtM_r    <= 0;
     end else begin
       RegWriteM_r  <= RegWriteE;  MemWriteM_r  <= MemWriteE;
       ResultSrcM_r <= ResultSrcE;
       ALUResultM_r <= ALUResultE; WriteDataM_r <= WriteDataE;
-      PCPlus4M_r   <= PCPlus4E;  RdM_r         <= RdE;
+      PCPlus4M_r   <= PCPlus4E;  RdM_r        <= RdE;
+      ImmExtM_r    <= ImmExtE_r;
     end
   end
 
@@ -192,14 +197,14 @@ module datapath(
   // ----------------------------------------------------------------
   reg        RegWriteW_r;
   reg [1:0]  ResultSrcW_r;
-  reg [31:0] ALUResultW_r, ReadDataW_r, PCPlus4W_r;
+  reg [31:0] ALUResultW_r, ReadDataW_r, PCPlus4W_r, ImmExtW_r;
   reg [4:0]  RdW_r;
 
   always @(posedge clk or posedge reset) begin
     if (reset) begin
       RegWriteW_r  <= 0; ResultSrcW_r <= 0;
       ALUResultW_r <= 0; ReadDataW_r  <= 0;
-      PCPlus4W_r   <= 0; RdW_r        <= 0;
+      PCPlus4W_r   <= 0; RdW_r        <= 0; ImmExtW_r    <= 0;
     end else begin
       RegWriteW_r  <= RegWriteM;
       ResultSrcW_r <= ResultSrcM;
@@ -207,6 +212,7 @@ module datapath(
       ReadDataW_r  <= ReadDataM;
       PCPlus4W_r   <= PCPlus4M;
       RdW_r        <= RdM_r;
+      ImmExtW_r    <= ImmExtM_r;
     end
   end
 
@@ -216,12 +222,10 @@ module datapath(
   // ================================================================
   // WB Stage
   // ================================================================
-  mux3 #(WIDTH) resultmux(
-    .d0(ALUResultW_r),
-    .d1(ReadDataW_r),
-    .d2(PCPlus4W_r),
-    .s(ResultSrcW_r),
-    .y(ResultW)
-  );
+  // 4-way result mux: 00=ALU, 01=ReadData(lw), 10=PC+4(jal), 11=ImmExt(lui)
+  assign ResultW = (ResultSrcW_r == 2'b11) ? ImmExtW_r    :
+                   ResultSrcW_r[1]          ? PCPlus4W_r   :
+                   ResultSrcW_r[0]          ? ReadDataW_r  :
+                                              ALUResultW_r;
 
 endmodule

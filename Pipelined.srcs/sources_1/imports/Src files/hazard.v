@@ -3,7 +3,7 @@ module hazard(
   input  [4:0] Rs1E, Rs2E, RdE,
   input  [4:0] RdM, RdW,
   input        RegWriteM, RegWriteW,
-  input        ResultSrcE0,
+  input        IsLoadE,
   input        PCSrcE,
   output reg [1:0] ForwardAE, ForwardBE,
   output StallF, StallD, FlushD, FlushE
@@ -25,7 +25,7 @@ module hazard(
   end
 
   // Load-use hazard: stall one cycle and insert bubble in EX
-  assign lwStall = ResultSrcE0 && (RdE == Rs1D || RdE == Rs2D);
+  assign lwStall = IsLoadE && (RdE == Rs1D || RdE == Rs2D);
 
   assign StallF = lwStall;
   assign StallD = lwStall;
